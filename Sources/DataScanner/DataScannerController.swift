@@ -13,7 +13,7 @@ struct DataScannerController: UIViewControllerRepresentable {
   private let isGuidanceEnabled: Bool
   private let isHighlightingEnabled: Bool
   @Binding private var isScanningActive: Bool
-  private let cameraFrame: CGRect
+  @Binding private var cameraFrame: CGRect
   private var onDetect: OnDetectScan
   
   init(
@@ -25,7 +25,7 @@ struct DataScannerController: UIViewControllerRepresentable {
     isGuidanceEnabled: Bool,
     isHighlightingEnabled: Bool,
     isScanningActive: Binding<Bool>,
-    cameraFrame: CGRect,
+    cameraFrame: Binding<CGRect>,
     onDetect: @escaping OnDetectScan
   ) {
     self.recognizedDataTypes = recognizedDataTypes
@@ -36,7 +36,7 @@ struct DataScannerController: UIViewControllerRepresentable {
     self.isGuidanceEnabled = isGuidanceEnabled
     self.isHighlightingEnabled = isHighlightingEnabled
     self._isScanningActive = isScanningActive
-    self.cameraFrame = cameraFrame
+    self._cameraFrame = cameraFrame
     self.onDetect = onDetect
   }
   
@@ -48,8 +48,6 @@ struct DataScannerController: UIViewControllerRepresentable {
     _ uiViewController: DataScannerViewController,
     context: Context
   ) {
-    context.coordinator.controller.regionOfInterest = cameraFrame
-    
     if isScanningActive {
       do {
         try uiViewController.startScanning()
@@ -71,12 +69,14 @@ struct DataScannerController: UIViewControllerRepresentable {
       isPinchToZoomEnabled: isPinchToZoomEnabled,
       isGuidanceEnabled: isGuidanceEnabled,
       isHighlightingEnabled: isHighlightingEnabled,
+      cameraFrame: $cameraFrame,
       onDetect: onDetect
     )
   }
   
   final class Coordinator: NSObject, DataScannerViewControllerDelegate {
     let controller: DataScannerViewController
+    @Binding private var cameraFrame: CGRect
     private var onDetect: OnDetectScan
     
     init(
@@ -87,6 +87,7 @@ struct DataScannerController: UIViewControllerRepresentable {
       isPinchToZoomEnabled: Bool,
       isGuidanceEnabled: Bool,
       isHighlightingEnabled: Bool,
+      cameraFrame: Binding<CGRect>,
       onDetect: @escaping OnDetectScan
     ) {
       controller = DataScannerViewController(
@@ -98,6 +99,7 @@ struct DataScannerController: UIViewControllerRepresentable {
         isGuidanceEnabled: isGuidanceEnabled,
         isHighlightingEnabled: isHighlightingEnabled
       )
+      self._cameraFrame = cameraFrame
       self.onDetect = onDetect
       super.init()
       controller.delegate = self
@@ -128,7 +130,10 @@ struct DataScannerController: UIViewControllerRepresentable {
     
     private func handleManualScan() {
       Task {
-        let photo = try await controller.capturePhoto()
+        let photo = try await controller
+          .capturePhoto()
+          .fixOrientation()
+          .crop(to: cameraFrame)
         try detectData(in: photo)
       }
     }
@@ -145,6 +150,7 @@ struct DataScannerController: UIViewControllerRepresentable {
               guard error == nil else { return }
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
+              guard !result.isEmpty else { return }
               onDetect(.success(result))
             }
           ]
@@ -154,6 +160,7 @@ struct DataScannerController: UIViewControllerRepresentable {
               guard error == nil else { return }
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
+              guard !result.isEmpty else { return }
               onDetect(.success(result))
             }
           ]
@@ -163,12 +170,14 @@ struct DataScannerController: UIViewControllerRepresentable {
               guard error == nil else { return }
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
+              guard !result.isEmpty else { return }
               onDetect(.success(result))
             },
             VNRecognizeTextRequest { [self] request, error in
               guard error == nil else { return }
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
+              guard !result.isEmpty else { return }
               onDetect(.success(result))
             }
           ]
@@ -196,6 +205,43 @@ struct DataScannerController: UIViewControllerRepresentable {
           fatalError("Unsupported VNRequest")
       }
     }
+  }
+}
+
+private extension UIImage {
+  func fixOrientation() -> UIImage {
+    // TODO: handle for landscape orientation
+    if imageOrientation == .up {  return self }
+    UIGraphicsBeginImageContextWithOptions(size, false, scale)
+    draw(in: CGRect(
+      origin: .zero,
+      size: size
+    ))
+    guard let normalizedImage = UIGraphicsGetImageFromCurrentImageContext() else {
+      return self
+    }
+    UIGraphicsEndImageContext()
+    return normalizedImage
+  }
+  
+  func crop(to frame: CGRect) -> UIImage {
+    let widthScale = size.width / frame.width
+    let newHeight = frame.height * widthScale
+    let y = size.height / 2 - newHeight / 2
+    
+    let cropFrame = CGRect(
+      origin: CGPoint(x: .zero, y: y),
+      size: CGSize(width: size.width, height: newHeight)
+    )
+    
+    guard let cgCroppedImage = cgImage?.cropping(to: cropFrame) else {
+      return self
+    }
+    return UIImage(
+      cgImage: cgCroppedImage,
+      scale: scale,
+      orientation: imageOrientation
+    )
   }
 }
 

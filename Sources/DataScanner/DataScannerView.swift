@@ -3,7 +3,6 @@ import Vision
 import VisionKit
 
 public struct DataScannerView: View {
-  @Environment(\.screenSize) private var screenSize
   @Binding private var types: Set<DataType>
   private let qualityLevel: DataScannerViewController.QualityLevel
   private let recognizesMultipleItems: Bool
@@ -12,7 +11,7 @@ public struct DataScannerView: View {
   private let isGuidanceEnabled: Bool
   private let isHighlightingEnabled: Bool
   @Binding private var isScanningActive: Bool
-  private var cameraHeight: CGFloat
+  private let scannerNotAvailableMessage: LocalizedStringKey
   private var onDetect: OnDetectScan
   @State private var cameraFrame: CGRect = .zero
   
@@ -30,7 +29,7 @@ public struct DataScannerView: View {
     isGuidanceEnabled: Bool = true,
     isHighlightingEnabled: Bool = false,
     isScanningActive: Binding<Bool>,
-    cameraHeight: CGFloat,
+    scannerNotAvailableMessage: LocalizedStringKey = "Scanner not available",
     onDetect: @escaping OnDetectScan
   ) {
     self._types = types
@@ -41,11 +40,30 @@ public struct DataScannerView: View {
     self.isGuidanceEnabled = isGuidanceEnabled
     self.isHighlightingEnabled = isHighlightingEnabled
     self._isScanningActive = isScanningActive
-    self.cameraHeight = cameraHeight
+    self.scannerNotAvailableMessage = scannerNotAvailableMessage
     self.onDetect = onDetect
   }
   
   public var body: some View {
+    content
+      .background {
+        GeometryReader { geo in
+          Color.clear
+            .preference(
+              key: CameraFramePreferenceKey.self,
+              value: geo.frame(in: .global)
+            )
+            .onPreferenceChange(CameraFramePreferenceKey.self) { frame in
+              self.cameraFrame = frame
+            }
+        }
+      }
+      .id([types.hashValue, cameraFrame.width.hashValue])
+  }
+  
+  @MainActor
+  @ViewBuilder
+  private var content: some View {
     #if targetEnvironment(simulator)
     noCameraView
     #else
@@ -59,12 +77,9 @@ public struct DataScannerView: View {
         isGuidanceEnabled: isGuidanceEnabled,
         isHighlightingEnabled: isHighlightingEnabled,
         isScanningActive: $isScanningActive,
-        cameraFrame: cameraFrame,
+        cameraFrame: $cameraFrame,
         onDetect: onDetect
       )
-      .id([types.hashValue, screenSize.width.hashValue])
-      .frame(width: screenSize.width, height: cameraHeight)
-      .get(frame: $cameraFrame, in: .local)
     } else {
       noCameraView
     }
@@ -72,8 +87,16 @@ public struct DataScannerView: View {
   }
   
   private var noCameraView: some View {
-    Text("Scanner not available")
+    Text(scannerNotAvailableMessage)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}
+
+private struct CameraFramePreferenceKey: PreferenceKey {
+  static var defaultValue: CGRect = .zero
+  
+  static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+    value = nextValue()
   }
 }
 
@@ -81,7 +104,6 @@ public struct DataScannerView: View {
   DataScannerView(
     types: .constant([.barcode]),
     isScanningActive: .constant(false),
-    cameraHeight: 300,
     onDetect: { _ in }
   )
 }
