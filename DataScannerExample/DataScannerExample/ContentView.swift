@@ -49,6 +49,11 @@ struct ContentView: View {
           dataTypes = [.barcode]
         }
         .frame(height: 44)
+        
+        Button("Scan both") {
+          dataTypes = [.barcode, .text]
+        }
+        .frame(height: 44)
       }
     }
   }

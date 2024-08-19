@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import Vision
 import VisionKit
@@ -15,6 +16,9 @@ struct DataScannerController: UIViewControllerRepresentable {
   @Binding private var isScanningActive: Bool
   @Binding private var cameraFrame: CGRect
   private var onDetect: OnDetectScan
+  
+  private let passthroughSubject: PassthroughSubject<[ScanResult], Never> = .init()
+  private var subscriptions: Set<AnyCancellable> = .init()
   
   init(
     recognizedDataTypes: Set<DataType>,
@@ -38,6 +42,24 @@ struct DataScannerController: UIViewControllerRepresentable {
     self._isScanningActive = isScanningActive
     self._cameraFrame = cameraFrame
     self.onDetect = onDetect
+    
+    // If both text and barcode are enabled,
+    // manual scan will aggregate the results to send single event
+    // instead of two separate ones.
+    passthroughSubject
+      .collect(.byTimeOrCount(DispatchQueue.global(), .seconds(2), 2))
+      .sink(receiveCompletion: { subscription in
+        switch subscription {
+          case .finished:
+            // NOP
+            break
+          case .failure(let failure):
+            onDetect(.failure(failure))
+        }
+      }, receiveValue: { values in
+        onDetect(.success(values.flatMap { $0 }))
+      })
+      .store(in: &subscriptions)
   }
   
   func makeUIViewController(context: Context) -> DataScannerViewController {
@@ -70,6 +92,7 @@ struct DataScannerController: UIViewControllerRepresentable {
       isGuidanceEnabled: isGuidanceEnabled,
       isHighlightingEnabled: isHighlightingEnabled,
       cameraFrame: $cameraFrame,
+      passthroughSubject: passthroughSubject,
       onDetect: onDetect
     )
   }
@@ -77,7 +100,8 @@ struct DataScannerController: UIViewControllerRepresentable {
   final class Coordinator: NSObject, DataScannerViewControllerDelegate {
     let controller: DataScannerViewController
     @Binding private var cameraFrame: CGRect
-    private var onDetect: OnDetectScan
+    private let onDetect: OnDetectScan
+    private let passthroughSubject: PassthroughSubject<[ScanResult], Never>
     
     init(
       recognizedDataTypes: Set<DataScannerViewController.RecognizedDataType>,
@@ -88,6 +112,7 @@ struct DataScannerController: UIViewControllerRepresentable {
       isGuidanceEnabled: Bool,
       isHighlightingEnabled: Bool,
       cameraFrame: Binding<CGRect>,
+      passthroughSubject: PassthroughSubject<[ScanResult], Never>,
       onDetect: @escaping OnDetectScan
     ) {
       controller = DataScannerViewController(
@@ -100,6 +125,7 @@ struct DataScannerController: UIViewControllerRepresentable {
         isHighlightingEnabled: isHighlightingEnabled
       )
       self._cameraFrame = cameraFrame
+      self.passthroughSubject = passthroughSubject
       self.onDetect = onDetect
       super.init()
       controller.delegate = self
@@ -171,14 +197,14 @@ struct DataScannerController: UIViewControllerRepresentable {
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
               guard !result.isEmpty else { return }
-              onDetect(.success(result))
+              passthroughSubject.send(result)
             },
             VNRecognizeTextRequest { [self] request, error in
               guard error == nil else { return }
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
               guard !result.isEmpty else { return }
-              onDetect(.success(result))
+              passthroughSubject.send(result)
             }
           ]
         default:

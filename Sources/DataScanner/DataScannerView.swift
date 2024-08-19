@@ -12,6 +12,7 @@ public struct DataScannerView: View {
   private let isHighlightingEnabled: Bool
   @Binding private var isScanningActive: Bool
   private let scannerNotAvailableMessage: LocalizedStringKey
+  private let scannerNotAvailableMessageColor: Color
   private var onDetect: OnDetectScan
   @State private var cameraFrame: CGRect = .zero
   
@@ -30,6 +31,7 @@ public struct DataScannerView: View {
     isHighlightingEnabled: Bool = false,
     isScanningActive: Binding<Bool>,
     scannerNotAvailableMessage: LocalizedStringKey = "Scanner not available",
+    scannerNotAvailableMessageColor: Color = .primary,
     onDetect: @escaping OnDetectScan
   ) {
     self._types = types
@@ -41,6 +43,7 @@ public struct DataScannerView: View {
     self.isHighlightingEnabled = isHighlightingEnabled
     self._isScanningActive = isScanningActive
     self.scannerNotAvailableMessage = scannerNotAvailableMessage
+    self.scannerNotAvailableMessageColor = scannerNotAvailableMessageColor
     self.onDetect = onDetect
   }
   
@@ -89,6 +92,7 @@ public struct DataScannerView: View {
   private var noCameraView: some View {
     Text(scannerNotAvailableMessage)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .foregroundStyle(scannerNotAvailableMessageColor)
   }
 }
 
