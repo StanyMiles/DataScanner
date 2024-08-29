@@ -54,9 +54,11 @@ struct DataScannerController: UIViewControllerRepresentable {
             // NOP
             break
           case .failure(let failure):
+            NotificationCenter.postManualScanResult(.failure)
             onDetect(.failure(failure))
         }
       }, receiveValue: { values in
+        NotificationCenter.postManualScanResult(.success)
         onDetect(.success(values.flatMap { $0 }))
       })
       .store(in: &subscriptions)
@@ -173,20 +175,40 @@ struct DataScannerController: UIViewControllerRepresentable {
         case [.barcode()]:
           requests = [
             VNDetectBarcodesRequest { [self] request, error in
-              guard error == nil else { return }
+              guard error == nil else {
+                NotificationCenter.postManualScanResult(.failure)
+                return
+              }
               let result = processClassification(request)
-              guard !Task.isCancelled else { return }
-              guard !result.isEmpty else { return }
+              guard !Task.isCancelled else { 
+                NotificationCenter.postManualScanResult(.failure)
+                return
+              }
+              guard !result.isEmpty else {
+                NotificationCenter.postManualScanResult(.failure)
+                return
+              }
+              NotificationCenter.postManualScanResult(.success)
               onDetect(.success(result))
             }
           ]
         case [.text()]:
           requests = [
             VNRecognizeTextRequest { [self] request, error in
-              guard error == nil else { return }
+              guard error == nil else {
+                NotificationCenter.postManualScanResult(.failure)
+                return
+              }
               let result = processClassification(request)
-              guard !Task.isCancelled else { return }
-              guard !result.isEmpty else { return }
+              guard !Task.isCancelled else {
+                NotificationCenter.postManualScanResult(.failure)
+                return
+              }
+              guard !result.isEmpty else {
+                NotificationCenter.postManualScanResult(.failure)
+                return
+              }
+              NotificationCenter.postManualScanResult(.success)
               onDetect(.success(result))
             }
           ]
