@@ -5,16 +5,35 @@ struct ContentView: View {
   @State private var height: CGFloat = 300
   @State private var isScanning = false
   @State private var dataTypes: Set<DataType> = [.barcode]
+  @State private var regionOfInterest: CGRect?
   
   var body: some View {
     VStack(spacing: 40) {
       DataScannerView(
         types: $dataTypes,
+        regionOfInterest: $regionOfInterest,
         isScanningActive: $isScanning,
         onDetect: { result in
           print(result)
         }
       )
+      .overlay {
+        Rectangle()
+          .fill(.red.opacity(0.2))
+          .frame(width: 200, height: 100)
+          .background {
+            GeometryReader { geo in
+              Color.clear
+                .preference(
+                  key: CameraFramePreferenceKey.self,
+                  value: geo.frame(in: .named("CameraSpace"))
+                )
+                .onPreferenceChange(CameraFramePreferenceKey.self) { frame in
+                  self.regionOfInterest = frame
+                }
+            }
+          }
+      }
       .frame(height: height)
       .background(Color.green)
       Spacer() 
@@ -56,9 +75,18 @@ struct ContentView: View {
         .frame(height: 44)
       }
     }
+    .coordinateSpace(.named("CameraSpace"))
   }
 }
 
 #Preview {
   ContentView()
+}
+
+private struct CameraFramePreferenceKey: PreferenceKey {
+  static var defaultValue: CGRect = .zero
+  
+  static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+    value = nextValue()
+  }
 }

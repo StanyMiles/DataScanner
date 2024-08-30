@@ -10,6 +10,7 @@ public struct DataScannerView: View {
   private let isPinchToZoomEnabled: Bool
   private let isGuidanceEnabled: Bool
   private let isHighlightingEnabled: Bool
+  @Binding private var regionOfInterest: CGRect?
   @Binding private var isScanningActive: Bool
   private let scannerNotAvailableMessage: LocalizedStringKey
   private let scannerNotAvailableMessageColor: Color
@@ -29,6 +30,7 @@ public struct DataScannerView: View {
     isPinchToZoomEnabled: Bool = true,
     isGuidanceEnabled: Bool = true,
     isHighlightingEnabled: Bool = false,
+    regionOfInterest: Binding<CGRect?> = .constant(nil),
     isScanningActive: Binding<Bool>,
     scannerNotAvailableMessage: LocalizedStringKey = "Scanner not available",
     scannerNotAvailableMessageColor: Color = .primary,
@@ -41,6 +43,7 @@ public struct DataScannerView: View {
     self.isPinchToZoomEnabled = isPinchToZoomEnabled
     self.isGuidanceEnabled = isGuidanceEnabled
     self.isHighlightingEnabled = isHighlightingEnabled
+    self._regionOfInterest = regionOfInterest
     self._isScanningActive = isScanningActive
     self.scannerNotAvailableMessage = scannerNotAvailableMessage
     self.scannerNotAvailableMessageColor = scannerNotAvailableMessageColor
@@ -80,7 +83,8 @@ public struct DataScannerView: View {
         isGuidanceEnabled: isGuidanceEnabled,
         isHighlightingEnabled: isHighlightingEnabled,
         isScanningActive: $isScanningActive,
-        cameraFrame: $cameraFrame,
+        cameraFrame: $cameraFrame, 
+        regionOfInterest: $regionOfInterest,
         onDetect: onDetect
       )
     } else {

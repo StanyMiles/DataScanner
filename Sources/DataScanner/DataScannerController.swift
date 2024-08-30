@@ -15,6 +15,7 @@ struct DataScannerController: UIViewControllerRepresentable {
   private let isHighlightingEnabled: Bool
   @Binding private var isScanningActive: Bool
   @Binding private var cameraFrame: CGRect
+  @Binding private var regionOfInterest: CGRect?
   private var onDetect: OnDetectScan
   
   private let passthroughSubject: PassthroughSubject<[ScanResult], Never> = .init()
@@ -30,6 +31,7 @@ struct DataScannerController: UIViewControllerRepresentable {
     isHighlightingEnabled: Bool,
     isScanningActive: Binding<Bool>,
     cameraFrame: Binding<CGRect>,
+    regionOfInterest: Binding<CGRect?>,
     onDetect: @escaping OnDetectScan
   ) {
     self.recognizedDataTypes = recognizedDataTypes
@@ -41,6 +43,7 @@ struct DataScannerController: UIViewControllerRepresentable {
     self.isHighlightingEnabled = isHighlightingEnabled
     self._isScanningActive = isScanningActive
     self._cameraFrame = cameraFrame
+    self._regionOfInterest = regionOfInterest
     self.onDetect = onDetect
     
     // If both text and barcode are enabled,
@@ -72,6 +75,8 @@ struct DataScannerController: UIViewControllerRepresentable {
     _ uiViewController: DataScannerViewController,
     context: Context
   ) {
+    uiViewController.regionOfInterest = regionOfInterest
+    
     if isScanningActive {
       do {
         try uiViewController.startScanning()
@@ -94,6 +99,7 @@ struct DataScannerController: UIViewControllerRepresentable {
       isGuidanceEnabled: isGuidanceEnabled,
       isHighlightingEnabled: isHighlightingEnabled,
       cameraFrame: $cameraFrame,
+      regionOfInterest: $regionOfInterest,
       passthroughSubject: passthroughSubject,
       onDetect: onDetect
     )
@@ -102,6 +108,7 @@ struct DataScannerController: UIViewControllerRepresentable {
   final class Coordinator: NSObject, DataScannerViewControllerDelegate {
     let controller: DataScannerViewController
     @Binding private var cameraFrame: CGRect
+    @Binding private var regionOfInterest: CGRect?
     private let onDetect: OnDetectScan
     private let passthroughSubject: PassthroughSubject<[ScanResult], Never>
     
@@ -114,6 +121,7 @@ struct DataScannerController: UIViewControllerRepresentable {
       isGuidanceEnabled: Bool,
       isHighlightingEnabled: Bool,
       cameraFrame: Binding<CGRect>,
+      regionOfInterest: Binding<CGRect?>,
       passthroughSubject: PassthroughSubject<[ScanResult], Never>,
       onDetect: @escaping OnDetectScan
     ) {
@@ -127,6 +135,7 @@ struct DataScannerController: UIViewControllerRepresentable {
         isHighlightingEnabled: isHighlightingEnabled
       )
       self._cameraFrame = cameraFrame
+      self._regionOfInterest = regionOfInterest
       self.passthroughSubject = passthroughSubject
       self.onDetect = onDetect
       super.init()
@@ -161,7 +170,10 @@ struct DataScannerController: UIViewControllerRepresentable {
         let photo = try await controller
           .capturePhoto()
           .fixOrientation()
-          .crop(to: cameraFrame)
+          .crop(
+            to: cameraFrame,
+            regionOfInterest: regionOfInterest
+          )
         try detectData(in: photo)
       }
     }
@@ -272,19 +284,38 @@ private extension UIImage {
     return normalizedImage
   }
   
-  func crop(to frame: CGRect) -> UIImage {
-    let widthScale = size.width / frame.width
-    let newHeight = frame.height * widthScale
-    let y = size.height / 2 - newHeight / 2
+  func crop(to frame: CGRect, regionOfInterest: CGRect?) -> UIImage {
     
-    let cropFrame = CGRect(
-      origin: CGPoint(x: .zero, y: y),
-      size: CGSize(width: size.width, height: newHeight)
-    )
+    let cropFrame: CGRect
+    
+    if let regionOfInterest {
+      let widthScale = size.width / frame.width
+      let newHeight = frame.height * widthScale - (frame.height - regionOfInterest.height) * widthScale
+      let newWidth = size.width - (frame.width - regionOfInterest.width) * widthScale
+      let x = regionOfInterest.minX * widthScale
+      let y = size.height / 2 - newHeight / 2 //(frame.height * widthScale / 2 + regionOfInterest.minY / 2 * widthScale)
+      
+      cropFrame = CGRect(
+        origin: CGPoint(x: x, y: y),
+        size: CGSize(width: newWidth, height: newHeight)
+      )
+      
+    } else {
+      
+      let widthScale = size.width / frame.width
+      let newHeight = frame.height * widthScale
+      let y = size.height / 2 - newHeight / 2
+      
+      cropFrame = CGRect(
+        origin: CGPoint(x: .zero, y: y),
+        size: CGSize(width: size.width, height: newHeight)
+      )
+    }
     
     guard let cgCroppedImage = cgImage?.cropping(to: cropFrame) else {
       return self
     }
+    
     return UIImage(
       cgImage: cgCroppedImage,
       scale: scale,
