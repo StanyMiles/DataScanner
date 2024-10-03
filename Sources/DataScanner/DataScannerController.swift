@@ -179,7 +179,10 @@ struct DataScannerController: UIViewControllerRepresentable {
     }
     
     private func detectData(in photo: UIImage) throws {
-      guard let cgImage = photo.cgImage else { return }
+      guard let cgImage = photo.cgImage else {
+        NotificationCenter.postManualScanResult(.failure)
+        return
+      }
       
       let requests: [VNRequest]
       
@@ -193,10 +196,6 @@ struct DataScannerController: UIViewControllerRepresentable {
               }
               let result = processClassification(request)
               guard !Task.isCancelled else { 
-                NotificationCenter.postManualScanResult(.failure)
-                return
-              }
-              guard !result.isEmpty else {
                 NotificationCenter.postManualScanResult(.failure)
                 return
               }
@@ -216,10 +215,6 @@ struct DataScannerController: UIViewControllerRepresentable {
                 NotificationCenter.postManualScanResult(.failure)
                 return
               }
-              guard !result.isEmpty else {
-                NotificationCenter.postManualScanResult(.failure)
-                return
-              }
               NotificationCenter.postManualScanResult(.success)
               onDetect(.success(result))
             }
@@ -230,14 +225,12 @@ struct DataScannerController: UIViewControllerRepresentable {
               guard error == nil else { return }
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
-              guard !result.isEmpty else { return }
               passthroughSubject.send(result)
             },
             VNRecognizeTextRequest { [self] request, error in
               guard error == nil else { return }
               let result = processClassification(request)
               guard !Task.isCancelled else { return }
-              guard !result.isEmpty else { return }
               passthroughSubject.send(result)
             }
           ]
